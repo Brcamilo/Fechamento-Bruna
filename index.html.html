@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bruna - Fechamento</title>
+
+<style>
+body { font-family: Arial; background:#f5f5f5; text-align:center; }
+
+.box {
+    background:white;
+    padding:15px;
+    margin:10px;
+    border-radius:15px;
+}
+
+.linha {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin:10px 0;
+}
+
+.btn {
+    padding:14px;
+    border-radius:10px;
+    flex:1;
+    margin-right:5px;
+    font-weight:bold;
+}
+
+input {
+    padding:10px;
+    width:90%;
+    margin:5px;
+    border-radius:8px;
+}
+
+.bold { font-weight:bold; }
+
+button {
+    padding:8px;
+    border:none;
+    border-radius:6px;
+    margin:3px;
+    background:#ffd600;
+    font-weight:bold;
+}
+
+#resumoPDF{ display:none; }
+
+@media print {
+    body { background:white; }
+
+    .btn, div {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    #resumoPDF{
+        display:block !important;
+        margin-bottom:15px;
+        border-bottom:2px solid #000;
+        padding-bottom:10px;
+        text-align:left;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<h1>🔥 Bruna</h1>
+
+<input type="date" id="data" onchange="carregarDia()">
+
+<div id="resumoPDF"></div>
+
+<div class="box">
+<h2>📦 Fechamento</h2>
+<div id="itens"></div>
+<h3>Total Geral: <span id="total">0</span></h3>
+</div>
+
+<div class="box">
+<h2>📋 Chamados</h2>
+<input id="id" placeholder="ID">
+<input id="num" placeholder="Número">
+<button onclick="addChamado()">Adicionar</button>
+<h3>Total do Dia: <span id="totalChamados">0</span></h3>
+<div id="listaChamados"></div>
+</div>
+
+<div class="box">
+<h2>⏰ Horário de Pico</h2>
+<input id="h" placeholder="Horário">
+<input id="obsH" placeholder="Observação">
+<button onclick="addPico()">Adicionar</button>
+<div id="listaPicos"></div>
+</div>
+
+<button onclick="copiarWhats()">📋 WhatsApp</button>
+<button onclick="exportarPDF()">📄 PDF</button>
+<button onclick="exportarIMG()">🖼️ Imagem</button>
+<button onclick="limpar()">🧹 Limpar</button>
+
+<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+
+<script>
+let banco = JSON.parse(localStorage.getItem("banco")) || {};
+let dataAtual = "";
+
+let tipos = [
+"Sem ID","Abrir Chamado","Reembalar",
+"Operação","Avarias","Operação Pronto","Chamado Aberto"
+];
+
+function formatarData(data){
+let [a,m,d]=data.split("-");
+return `${d}/${m}/${a}`;
+}
+
+window.onload = ()=>{
+let ultimaData = localStorage.getItem("dataSelecionada");
+
+if(ultimaData){
+document.getElementById("data").value = ultimaData;
+}else{
+let hoje = new Date().toISOString().split("T")[0];
+document.getElementById("data").value = hoje;
+}
+
+carregarDia();
+};
+
+function carregarDia(){
+dataAtual = document.getElementById("data").value;
+localStorage.setItem("dataSelecionada", dataAtual);
+
+if(!banco[dataAtual]){
+banco[dataAtual] = {dados:{}, obs:{}, chamados:[], picos:[]};
+}
+if(!banco[dataAtual].obs){
+banco[dataAtual].obs = {};
+}
+
+renderTudo();
+}
+
+function getDia(){ return banco[dataAtual]; }
+function salvar(){ localStorage.setItem("banco", JSON.stringify(banco)); }
+
+function salvarObs(tipo, valor){
+let d=getDia();
+d.obs[tipo]=valor;
+salvar();
+}
+
+function getStatus(t,v){
+if(t==="Sem ID"){
+    if(v>=51) return " 🔴 ALERTA CRÍTICO";
+    if(v>=1) return " 🟠 ALERTA";
+}
+if(t==="Avarias"){
+    if(v>=31) return " 🔴 ALERTA CRÍTICO";
+    if(v>=26) return " 🟠 ALERTA";
+}
+return "";
+}
+
+function gerarResumo(){
+let d=getDia();
+let total=document.getElementById("total").innerText;
+
+let html=`
+<h2>📊 FECHAMENTO - DIVERGÊNCIA</h2>
+<p><b>Data:</b> ${formatarData(dataAtual)}</p>
+<p><b>Responsável:</b> Bruna</p>
+
+<h3>Resumo:</h3>
+<p><b>📦 Total Operacional: ${total}</b></p>
+`;
+
+tipos.forEach(t=>{
+if(t==="Chamado Aberto") return;
+
+let v=d.dados[t]||0;
+let nome=(t==="Operação")?"Operação Tratativa":t;
+let status=getStatus(t,v);
+
+if(v>0){
+html+=`<p><b>${nome}: ${v}${status}</b></p>`;
+}
+});
+
+html+=`<p><b>📋 Chamados Abertos: ${d.chamados.length}</b></p>`;
+
+html+=`<h3>⏰ Horário de Pico:</h3>`;
+
+if(d.picos.length===0){
+html+=`<p><b>Nenhum registro</b></p>`;
+}else{
+d.picos.forEach(p=>{
+html+=`
+<div style="background:#fff3cd; padding:6px; margin:5px 0; border-radius:6px;">
+<b>${p}</b>
+</div>`;
+});
+}
+
+document.getElementById("resumoPDF").innerHTML=html;
+}
+
+function exportarPDF(){
+gerarResumo();
+setTimeout(()=>{
+window.print();
+},300);
+}
+
+// 🔥 CORREÇÃO AQUI (APENAS WHATS)
+function copiarWhats(){
+let d=getDia();
+let total=document.getElementById("total").innerText;
+
+let texto=`FECHAMENTO - ${dataAtual}\n\n`;
+
+tipos.forEach(t=>{
+if(t==="Chamado Aberto") return;
+
+let v=d.dados[t]||0;
+let nome=(t==="Operação")?"Operação (Tratativa)":t;
+let status=getStatus(t,v);
+let obs=d.obs?.[t] || "";
+
+if(v>0){
+texto+=`${nome}: ${v}${status}\n`;
+
+if(obs){
+texto+=`Obs: ${obs}\n`;
+}
+
+texto+=`\n`;
+}
+});
+
+texto+=`TOTAL: ${total}\n\n`;
+texto+=`CHAMADOS ABERTOS: ${d.chamados.length}\n\n`;
+
+texto+=`CHAMADOS:\n`;
+if(d.chamados.length===0){
+texto+=`Nenhum\n`;
+}else{
+d.chamados.forEach((c,i)=>{
+texto+=`${i+1} - ${c.id} | ${c.num}\n`;
+});
+}
+
+texto+=`\nHORÁRIO DE PICO:\n`;
+if(d.picos.length===0){
+texto+=`Nenhum\n`;
+}else{
+d.picos.forEach(p=> texto+=`🟡 ${p}\n`);
+}
+
+let textarea = document.createElement("textarea");
+textarea.value = texto;
+document.body.appendChild(textarea);
+textarea.select();
+document.execCommand("copy");
+document.body.removeChild(textarea);
+
+alert("Copiado no estilo simples ✅");
+}
+
+// resto igual
+function add(nome){ let d=getDia(); d.dados[nome]=(d.dados[nome]||0)+1; salvar(); renderTudo(); }
+function remover(nome){ let d=getDia(); d.dados[nome]=Math.max((d.dados[nome]||0)-1,0); salvar(); renderTudo(); }
+
+function render(){
+let d=getDia();
+let div=document.getElementById("itens");
+div.innerHTML="";
+let total=0;
+
+tipos.forEach(t=>{
+let v=d.dados[t]||0;
+total+=v;
+
+let cor="#000";
+
+if(t==="Sem ID"){
+    if(v>=51) cor="#ff4d4d";
+    else if(v>=1) cor="#ff9800";
+}
+else if(t==="Avarias"){
+    if(v>=31) cor="#ff4d4d";
+    else if(v>=26) cor="#ff9800";
+    else if(v>=1) cor="#ffd600";
+}
+else{
+    if(v>0) cor="#ffd600";
+}
+
+let obs = d.obs[t] || "";
+
+div.innerHTML+=`
+<div class="linha">
+<div class="btn" style="background:${cor}; color:${cor=="#000"?"#fff":"#000"}" onclick="add('${t}')">${t}</div>
+<div>
+<b>Total ${t}: ${v}</b><br>
+<button onclick="add('${t}')">➕</button>
+<button onclick="remover('${t}')">➖</button>
+</div>
+</div>
+
+📦 <input 
+value="${obs}" 
+class="${obs ? 'bold' : ''}"
+oninput="salvarObs('${t}', this.value); this.classList.toggle('bold', this.value!='')"
+placeholder="Obs ${t}">
+`;
+});
+
+document.getElementById("total").innerText=total;
+}
+
+function addChamado(){
+let d=getDia();
+let id=document.getElementById("id").value;
+let num=document.getElementById("num").value;
+
+d.chamados.push({id,num});
+salvar(); renderChamados();
+
+document.getElementById("id").value="";
+document.getElementById("num").value="";
+}
+
+function renderChamados(){
+let d=getDia();
+let div=document.getElementById("listaChamados");
+div.innerHTML="";
+document.getElementById("totalChamados").innerText=d.chamados.length;
+
+d.chamados.forEach((c,i)=>{
+div.innerHTML+=`<p>${i+1} - ${c.id} | ${c.num}
+<button onclick="delChamado(${i})">❌</button></p>`;
+});
+}
+
+function delChamado(i){
+let d=getDia();
+d.chamados.splice(i,1);
+salvar(); renderChamados();
+}
+
+function addPico(){
+let d=getDia();
+let h=document.getElementById("h").value;
+let o=document.getElementById("obsH").value;
+
+d.picos.push(`${h} - ${o}`);
+salvar(); renderPico();
+
+document.getElementById("h").value="";
+document.getElementById("obsH").value="";
+}
+
+function renderPico(){
+let d=getDia();
+let div=document.getElementById("listaPicos");
+div.innerHTML="";
+
+d.picos.forEach((p,i)=>{
+div.innerHTML+=`
+<div style="background:#fff3cd; padding:8px; margin:5px; border-radius:8px;">
+${p} <button onclick="delPico(${i})">❌</button>
+</div>`;
+});
+}
+
+function delPico(i){
+let d=getDia();
+d.picos.splice(i,1);
+salvar(); renderPico();
+}
+
+function exportarIMG(){
+html2canvas(document.body).then(c=>{
+let a=document.createElement("a");
+a.href=c.toDataURL();
+a.download="fechamento.png";
+a.click();
+});
+}
+
+function limpar(){
+if(confirm("Limpar tudo?")){
+banco[dataAtual]={dados:{}, obs:{}, chamados:[], picos:[]};
+salvar(); renderTudo();
+}
+}
+
+function renderTudo(){
+render();
+renderChamados();
+renderPico();
+}
+</script>
+
+</body>
+</html>
